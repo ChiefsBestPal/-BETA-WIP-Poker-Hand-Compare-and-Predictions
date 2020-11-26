@@ -12,6 +12,7 @@ from collections import Counter
 import functools #reduce and partial
 import re
 import itertools as it
+import operator
 #000
 #*suit: symbol #*rank: Card Power
 #*Special rule : no suit ranking and no low aces
@@ -21,7 +22,7 @@ rank_to_rank_name = {2: 'two',
 3: 'three',
 4: 'four',
 5: 'five',
-6: 'sixe',
+6: 'six',
 7: 'seven',
 8: 'eight',
 9: 'nine',
@@ -60,24 +61,24 @@ def evaluate_hand(hand):
         hand = format_input(hand)
         hand_ranks,hand_suits = [tup[0] for tup in hand],[tup[1] for tup in hand]
     except TypeError:
-        hand_ranks,hand_suits = hand[0],['H']
-
+        hand_ranks,hand_suits = hand[0],['H']#!THIS IS VERY INACURATE, CHANGE TO INCORPORATE PROPER SYMBOL
+    print(hand_suits)
     check_suits = lambda suits: bool(len(dict.fromkeys(suits)) == 1)
     counter_str = Counter(hand_ranks)
     counter = dict(zip(map(int,counter_str.keys()),counter_str.values())) #Casting int type to keys for convenience
     hand_ranks = list(map(int,hand_ranks))
     #print(counter)
 
-    #print(hand_suits)
-    #print(hand_ranks)
-
+    
+    highest_occurence = lambda dic: max(dic.items(), key=operator.itemgetter(1))[0]
+    least_occurence = lambda dic: min(counter.items(), key=operator.itemgetter(1))[0]
     #1 Royal Flush:     A,K,Q,J,10 Same suit
     #? All same suit, A,K,Q,J,T 
     if hand_ranks == list(range(14,10-1,-1)) and check_suits(hand_suits):
         power = 10
 
         identity = "Royal Flush, All " + str(suit_to_suit_names[hand_suits[-1]]).title()
-        compare = hand_ranks 
+        compare = hand_ranks
     #2 Straight Flush:  9,8,7,6,5 (consecutive five cards) Same suit
     #? All same suit, if sorted(hand,reverse=True) == hand, the best will always be highest sum(hand)
     elif hand_ranks == list(range(int(hand_ranks[0]),int(hand_ranks[0])-5,-1)) and check_suits(hand_suits):
@@ -87,19 +88,19 @@ def evaluate_hand(hand):
         compare = hand_ranks
     #3 Four of a kind: four cards of the same rank HIGHEST RANK WORTH MORE, IF ranks of 2 players are equal, Highest 5th card wins
     #? if max(collections.Counter(rank_ix)) == 4, the best here will be highest sum(hand) (the 5th differentiats two same fourofakind)
-    elif counter[max(counter)] == 4:
+    elif counter[highest_occurence(counter)] == 4:#counter[max(counter)] == 4:
         power = 8
-        FourOfAKind = max(counter)
-        fifth = min(counter)
+        FourOfAKind = highest_occurence(counter)
+        fifth = least_occurence(counter)
 
         identity = "Four of kind ; of rank {}; and with {} as kicker".format(rank_to_rank_name[FourOfAKind],rank_to_rank_name[fifth])
         compare = [FourOfAKind,fifth]
     #4 Full house: 3 cards of the same rank  + 2 cards of other same rank   (3cardsrank "full of" 2cardsrank). the Three of a kind worth more
     #? if collections.Counter(rank_ix) == {3,2} : best is highest rank of 3 (if equal, highest rank of 2)
-    elif list(counter.values())[:] == [3,2]:
+    elif list(counter.values())[:] in ([3,2],[2,3]): #only two permutations possible
         power = 7
-        trio = list(counter.keys())[0]
-        duo = list(counter.keys())[1]
+        trio = highest_occurence(counter)
+        duo = least_occurence(counter)
 
         identity = str("{}s full of {}s".format(rank_to_rank_name[trio],rank_to_rank_name[duo]))
         compare = [trio,duo]
@@ -118,31 +119,32 @@ def evaluate_hand(hand):
         Rank_of_Straight = max(map(int,hand_ranks)) #if equal, then tie
 
         identity = str(rank_to_rank_name[Rank_of_Straight]).title() + "-high Straight"
-        compare = Rank_of_Straight
+        compare = [Rank_of_Straight]
     #7 Three of a kind: three cards of the same rank, IF ranks of 2 players are equal, Highest 2 remaining cards wins
     #? if collections.Counter(rank_ix)[0] == 3: best is highest rank of 3 (if same, then highest sum(remainders) wins)
-    elif counter[max(counter)] == 3:
+    elif counter[highest_occurence(counter)] == 3:
         power = 4
-        Rank_of_TOAK = max(counter)
+        Rank_of_TOAK = highest_occurence(counter)
         remainders_in_order = sorted(hand_ranks, reverse=True)[-2:]
 
-        identity = "Three of a kind, rank " + rank_to_rank_name[Rank_of_Straight]
+        identity = "Three of a kind, rank " + rank_to_rank_name[Rank_of_TOAK]
         compare = [Rank_of_TOAK]
         compare.extend(remainders_in_order)
     #8 Two Pair: 2 pairs of cards with same respective rank, the highest rank pair determines the two-pair ranks   (If equal, the fifth determines winner?) 
     #? if collections.Counter(rank_ix) == {2,2} : best is highest rank of a 2 (if equal, highest rank of other 2, then fifth card)
-    elif list(counter.values())[:] == [2,2,1]:
+    elif list(counter.values())[:] in (list(i) for i in it.permutations([2,2,1])):#cards keys could be in any order (highest value not always highest key)
         power = 3
-        HighestPair = list(counter)[0]
-        SecondHighestPair = list(counter)[1]
-        fifth = list(counter)[2]
+        HighestPair = highest_occurence(counter) #list(counter)[0]
+        del counter[highest_occurence(counter)]
+        SecondHighestPair = highest_occurence(counter) #after the first one was removed
+        fifth = least_occurence(counter)
         
         identity = "Two pairs: pair of " + rank_to_rank_name[HighestPair] + " and pair of " + rank_to_rank_name[SecondHighestPair]
         compare = [HighestPair,SecondHighestPair,fifth]
     #9 One pair: 1 pair of cards with same rank (if equal, sum the last 3 cards values)
-    elif list(counter.values())[:] == [2,1,1,1]:
+    elif list(counter.values())[:] in (list(i) for i in it.permutations([2,1,1,1])): #same justification as two pair
         power = 2
-        Pair = list(counter)[0]
+        Pair = highest_occurence(counter)
         best_cards_in_order = sorted(list(counter)[1:], reverse=True)
 
         identity = "One pair of rank " + rank_to_rank_name[Pair]
@@ -167,17 +169,17 @@ identity2 = "" # This will indicate if two hands of the same power were compared
 def all_hands(*power_and_compare):
     global identity2
     #first hand is OUR player
-
-    highest_power = max([arr[0] for arr in power_and_compare]) #?#000 ERROR HERE #000
+    print(power_and_compare)
+    highest_power = max([arr[0] for arr in power_and_compare])
     equal_hands = []
     for player_number,i in enumerate(power_and_compare):
         if i[0] == highest_power:
             equal_hands.append([i[1],player_number+1,i[2]]) #i[2] is the identify for displayed message
-
     if len(equal_hands) == 1:
         res = list(it.chain(*equal_hands))[1]
     else:
         identity2 = "Highest " #add to final message if there is a sole winner
+    
     temp = equal_hands[0][0]
     for hand in equal_hands[1:]:
         for x,y in zip(hand[0],temp):
@@ -204,6 +206,7 @@ def all_hands(*power_and_compare):
 
         return "Tie"
     else:
+        res = tie[0]
         print("WINNER IS PLAYER " + str(res),end="\n")
 
         print(identity2 + full_hand_identity[2]) #? IDENTITY MIGHT BE IMPRECISE HERE (JUST VISUALS)
@@ -225,7 +228,7 @@ def main():
             other_hands.append(hand2.encode())
             continue
     
-    #! Im proud of this part----------------------
+    
     other_hands_evaluated = functools.reduce(lambda hand: evaluate_hand(hand),other_hands)    
     compare_function = all_hands #*<function object>
     hands_iter = iter(other_hands_evaluated) #*in OOP use __iter__
@@ -233,20 +236,18 @@ def main():
     while True:
         try:
             current = next(hands_iter)
-            compare_function = functools.partial(compare_function,current)
+            compare_function = functools.partial(compare_function,current)#?#000 ERROR HERE #000
         except StopIteration as end_iter:
             print(end_iter,end="\t")
             break
         else:
             print(str(current))
-    #!--------------------------
+    
     last_hand_value = other_hands_evaluated[-1] #* Forced to do this due to the nature of partial()
     print(compare_function(last_hand_value))
 
-#if __name__ == '__main__':
-    #main()
-
-print(all_hands(evaluate_hand("2H 3H 4H 5H 6H"),evaluate_hand("KS AS TS QS JS")))    
+#?if __name__ == '__main__':
+    #?main()
+print(all_hands(evaluate_hand("2H 2C 3S 3H 3D"),evaluate_hand("3D 2H 3H 2C 2D")))    
 #! USE FULL TERMS: https://www.tightpoker.com/poker_terms.html
-#* !!!!!!!! DO GIT REPO !!!!!!!!!!!!!
 #! DO A FULL SOFTWARE OF THIS !
